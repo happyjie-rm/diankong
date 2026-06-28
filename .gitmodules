@@ -1,3 +1,12 @@
 [submodule "modules/DR16"]
 	path = modules/DR16
 	url = https://github.com/happyjie-rm/DR16.git
+[submodule "modules/Vofa"]
+	path = modules/Vofa
+	url = https://github.com/happyjie-rm/Vofa.git
+[submodule "modules/LX824"]
+	path = modules/LX824
+	url = https://github.com/happyjie-rm/LX824.git
+[submodule "modules/game"]
+	path = modules/game
+	url = https://github.com/happyjie-rm/game.git
