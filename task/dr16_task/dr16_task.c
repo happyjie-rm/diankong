@@ -2,7 +2,7 @@
 #include <stddef.h>
 
 #include "comp_utils.h"
-#include "dev_dr16.h"
+#include "dr16.h"
 #include "task.h"
 #include "usart.h"
 

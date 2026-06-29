@@ -10,3 +10,6 @@
 [submodule "modules/game"]
 	path = modules/game
 	url = https://github.com/happyjie-rm/game.git
+[submodule "modules/I6X"]
+	path = modules/I6X
+	url = https://github.com/happyjie-rm/I6X.git
