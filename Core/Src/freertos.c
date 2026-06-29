@@ -89,6 +89,13 @@ const osThreadAttr_t lx824_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
+/* Definitions for I6X */
+osThreadId_t I6XHandle;
+const osThreadAttr_t I6X_attributes = {
+  .name = "I6X",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -101,6 +108,7 @@ void vt13_task(void *argument);
 void vofa_task(void *argument);
 void imu_task(void *argument);
 void lx824_task(void *argument);
+void I6X_task(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -165,6 +173,9 @@ void MX_FREERTOS_Init(void) {
 
   /* creation of lx824 */
   lx824Handle = osThreadNew(lx824_task, NULL, &lx824_attributes);
+
+  /* creation of I6X */
+  I6XHandle = osThreadNew(I6X_task, NULL, &I6X_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -282,6 +293,24 @@ __weak void lx824_task(void *argument)
     osDelay(1);
   }
   /* USER CODE END lx824_task */
+}
+
+/* USER CODE BEGIN Header_I6X_task */
+/**
+* @brief Function implementing the I6X thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_I6X_task */
+__weak void I6X_task(void *argument)
+{
+  /* USER CODE BEGIN I6X_task */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END I6X_task */
 }
 
 /* Private application code --------------------------------------------------*/
