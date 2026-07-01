@@ -53,13 +53,13 @@ __attribute__((weak)) void VofaTask_OnCommand(const char *name, float value)
   }
 }
 
-//! VOFA FreeRTOS 任务：初始化 USART3 收发，并周期性发送 firewater 数据帧。
+//! VOFA FreeRTOS 任务：初始化 USART6 收发，并周期性发送 firewater 数据帧。
 void vofa_task(void *argument)
 {
   RM_UNUSED(argument);
 
   static Vofa_t vofa;  // 静态存储，保证任务整个生命周期内有效。
-  err_t status = Vofa_Init(&vofa, &huart3);
+  err_t status = Vofa_Init(&vofa, &huart6);
   vofa.thread_alert = xTaskGetCurrentTaskHandle();
   Vofa_SetCommandCallback(&vofa, OnVofaCommand);
 

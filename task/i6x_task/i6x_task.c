@@ -17,7 +17,7 @@ void I6X_task(void *argument)
   RM_UNUSED(argument);
 
   static I6X_t i6x_instance;  // 静态存储，保证任务整个生命周期内有效。
-  err_t status = I6X_Init(&i6x_instance, &huart1);
+  err_t status = I6X_Init(&i6x_instance, &huart4);
   i6x = &i6x_instance;
 
   i6x->thread_alert = xTaskGetCurrentTaskHandle();

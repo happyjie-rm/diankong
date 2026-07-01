@@ -24,14 +24,14 @@ volatile int8_t debug_lx824_id_read_error = (int8_t)PENDING;
 static uint8_t g_servo_id = 0U;
 static volatile bool g_servo_id_valid = false;
 
-//! LX824 FreeRTOS 任务：初始化 UART4 舵机总线，并周期性读取舵机 ID。
+//! LX824 FreeRTOS 任务：初始化 UART1 舵机总线，并周期性读取舵机 ID。
 void lx824_task(void *argument)
 {
   RM_UNUSED(argument);
 
-  // 舵机串行总线当前保持使用 UART4（huart2=DR16）
+  // 舵机串行总线当前保持使用 UART1（huart2=DR16）
   static LX824_t lx824_instance;  // 静态存储，保证任务整个生命周期内有效。
-  err_t status = LX824_Init(&lx824_instance, &huart4);
+  err_t status = LX824_Init(&lx824_instance, &huart1);
   lx824 = &lx824_instance;
 
   lx824->thread_alert = xTaskGetCurrentTaskHandle();
