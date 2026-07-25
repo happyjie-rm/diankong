@@ -33,18 +33,37 @@ static gimbal_control_context_t gimbal_context = {
     },
 };
 
-static const PID_Init_Config_s gimbal_speed_pid_config = {
-    .Kp = 0.0f,
-    .Ki = 0.0f,
-    .Kd = 0.0f,
-    .MaxOut = 30000.0f,
-    .DeadBand = 0.0f,
-    .Improve = PID_IMPROVE_NONE,
-    .IntegralLimit = 0.0f,
-    .CoefA = 0.0f,
-    .CoefB = 0.0f,
-    .Output_LPF_RC = 0.0f,
-    .Derivative_LPF_RC = 0.0f,
+static const PID_Init_Config_s gimbal_speed_pid_configs[GIMBAL_AXIS_COUNT] = {
+    {
+        /* 轮 0：yaw */
+        .Kp = 0.0f,
+        .Ki = 0.0f,
+        .Kd = 0.0f,
+        .MaxOut = 12000.0f,
+        .DeadBand = 0.0f,
+        .Improve = PID_Integral_Limit | PID_Derivative_On_Measurement |
+                   PID_OutputFilter | PID_DerivativeFilter,
+        .IntegralLimit = 3000.0f,
+        .CoefA = 0.0f,
+        .CoefB = 0.0f,
+        .Output_LPF_RC = 0.0002f,
+        .Derivative_LPF_RC = 0.0002f,
+    },
+    {
+        /* 轮 1：pitch */
+        .Kp = 8.0f,
+        .Ki = 0.0f,
+        .Kd = 0.0f,
+        .MaxOut = 12000.0f,
+        .DeadBand = 0.0f,
+        .Improve = PID_Integral_Limit | PID_Derivative_On_Measurement |
+                   PID_OutputFilter | PID_DerivativeFilter,
+        .IntegralLimit = 3000.0f,
+        .CoefA = 0.0f,
+        .CoefB = 0.0f,
+        .Output_LPF_RC = 0.0002f,
+        .Derivative_LPF_RC = 0.0002f,
+    },
 };
 
 /**

@@ -107,21 +107,21 @@ const osThreadAttr_t imu_485_attributes = {
 osThreadId_t gimbalHandle;
 const osThreadAttr_t gimbal_attributes = {
   .name = "gimbal",
-  .stack_size = 128 * 4,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for chassis */
 osThreadId_t chassisHandle;
 const osThreadAttr_t chassis_attributes = {
   .name = "chassis",
-  .stack_size = 128 * 4,
+  .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for joint */
 osThreadId_t jointHandle;
 const osThreadAttr_t joint_attributes = {
   .name = "joint",
-  .stack_size = 128 * 4,
+  .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 
