@@ -40,7 +40,8 @@ typedef enum {
 } PID_Improvement_e;
 
 //* ================= 位置式 PID 错误状态 =================
-//? 当前错误处理只实现电机堵转检测，ERRORType 按 bit 保存，便于后续扩展多个故障源。
+//? 当前错误处理只实现电机堵转检测，ERRORType 按 bit
+//保存，便于后续扩展多个故障源。
 typedef enum errorType_e {
   PID_ERROR_NONE = 0x00U,
   PID_MOTOR_BLOCKED_ERROR = 0x01U
@@ -52,8 +53,10 @@ typedef struct {
 } PID_ErrorHandler_t;
 
 //* ================= 位置式 PID 运行实例 =================
-//? PIDInstance 同时保存配置参数和运行时状态，PIDCalculate() 每轮都会更新缓存字段。
-//! 外部不要在控制循环中直接改写 Last_*、Iout、Dout 等运行时字段，否则会破坏状态连续性。
+//? PIDInstance 同时保存配置参数和运行时状态，PIDCalculate()
+//每轮都会更新缓存字段。
+//! 外部不要在控制循环中直接改写 Last_*、Iout、Dout
+//! 等运行时字段，否则会破坏状态连续性。
 typedef struct {
   //---------------------------------- init config block
   //? config parameter: 这些字段来自 PID_Init_Config_s，初始化后作为调参入口。
@@ -72,7 +75,8 @@ typedef struct {
   float Derivative_LPF_RC; // 微分滤波器系数
 
   //-----------------------------------
-  //? for calculating: 以下字段由 PIDCalculate() 维护，用于保存当前值和上一次状态。
+  //? for calculating: 以下字段由 PIDCalculate()
+  //维护，用于保存当前值和上一次状态。
   float Measure;
   float Last_Measure;
   float Err;
@@ -117,14 +121,34 @@ typedef struct // config parameter
 } PID_Init_Config_s;
 
 /**
- * @brief 初始化PID实例
- * @attention 该函数为旧版本，请尽快使用PIDRegister函数
- * @param pid    PID实例指针
- * @param config PID初始化配置
+ * @brief 更新 PID 固定参数，保留当前运行状态
+ * @param pid               PID 实例指针
+ * @param kp                比例系数
+ * @param ki                积分系数
+ * @param kd                微分系数
+ * @param max_output        输出限幅
+ * @param max_integral      积分限幅
+ * @param deadzone          死区
+ * @param improve_flags     优化功能标志
+ * @param coef_a            变速积分系数 A
+ * @param coef_b            变速积分系数 B
+ * @param output_lpf_rc     输出低通滤波 RC
+ * @param derivative_lpf_rc 微分低通滤波 RC
  */
-void PIDInit(PIDInstance *pid, PID_Init_Config_s *config);
 
-PIDInstance *PIDRegister(PID_Init_Config_s *config);
+/**
+ * @brief 使用显式参数初始化 PID 实例并清空运行状态
+ */
+void PIDInit(PIDInstance *pid, float kp, float ki, float kd, float max_output,
+             float max_integral, float deadzone,
+             PID_Improvement_e improve_flags, float coef_a, float coef_b,
+             float output_lpf_rc, float derivative_lpf_rc);
+
+PIDInstance *PIDRegister(float kp, float ki, float kd, float max_output,
+                         float max_integral, float deadzone,
+                         PID_Improvement_e improve_flags, float coef_a,
+                         float coef_b, float output_lpf_rc,
+                         float derivative_lpf_rc);
 /**
  * @brief 计算PID输出
  *

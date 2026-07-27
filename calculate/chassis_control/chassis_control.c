@@ -29,12 +29,14 @@
  * 任务层只通过公开 API 读写，不直接暴露本结构，避免并发/误写。
  */
 typedef struct {
-  dj_motor_bus_t bus;                          /**< DJ 电机总线（绑定 CAN2） */
-  dj_motor_t motors[CHASSIS_WHEEL_COUNT];      /**< 四轮电机实例，顺序：左前/右前/左后/右后 */
-  PIDInstance speed_pid[CHASSIS_WHEEL_COUNT];  /**< 各轮速度环 PID 实例 */
-  chassis_control_status_t status;             /**< 对外可查询的状态快照 */
-  bool init_attempted;                         /**< 是否已尝试过初始化（防重复 init） */
-  bool zero_sent;                              /**< 本会话是否成功发过至少一帧零电流 */
+  dj_motor_bus_t bus; /**< DJ 电机总线（绑定 CAN2） */
+  dj_motor_t
+      motors[CHASSIS_WHEEL_COUNT]; /**< 四轮电机实例，顺序：左前/右前/左后/右后
+                                    */
+  PIDInstance speed_pid[CHASSIS_WHEEL_COUNT]; /**< 各轮速度环 PID 实例 */
+  chassis_control_status_t status;            /**< 对外可查询的状态快照 */
+  bool init_attempted; /**< 是否已尝试过初始化（防重复 init） */
+  bool zero_sent;      /**< 本会话是否成功发过至少一帧零电流 */
 } chassis_control_context_t;
 
 /** 模块级单例上下文；初始为未初始化 + PENDING。 */
@@ -47,77 +49,99 @@ static chassis_control_context_t chassis_context = {
 };
 
 /**
- * @brief 四轮速度环 PID 静态配置（与参考工程对齐）。
+ * @brief 四轮速度环 PID RAM 调参配置（与参考工程对齐）。
  *
  * 公共约束：
  * - MaxOut=12000：输出限幅对齐 M3508 电流指令量级。
  * - IntegralLimit=3000：积分限幅，抑制积分饱和。
  * - Improve 组合：积分限幅 + 微分基于测量 + 输出/微分低通，减小噪声抖动。
  *
- * 各轮 Kp/Ki 略有差异，用于补偿机械/安装不对称；后续标定可只改本表。
+ * 各轮 Kp/Ki 略有差异，用于补偿机械/安装不对称。配置表放在 SRAM 并声明为
+ * volatile，便于 Ozone 在运行期间直接修改；主动控制时会同步到 PID 实例，
+ * 失能或故障复位时则以本表重新初始化完整 PID 状态。
  */
-static const PID_Init_Config_s chassis_speed_pid_configs[CHASSIS_WHEEL_COUNT] = {
-    {
-        /* 轮 0：左前 */
-        .Kp = 12.0f,
-        .Ki = 0.0f,
-        .Kd = 0.0f,
-        .MaxOut = 12000.0f,
-        .DeadBand = 0.0f,
-        .Improve = PID_Integral_Limit | PID_Derivative_On_Measurement |
-                   PID_OutputFilter | PID_DerivativeFilter,
-        .IntegralLimit = 3000.0f,
-        .CoefA = 0.0f,
-        .CoefB = 0.0f,
-        .Output_LPF_RC = 0.0002f,
-        .Derivative_LPF_RC = 0.0002f,
-    },
-    {
-        /* 轮 1：右前 */
-        .Kp = 8.0f,
-        .Ki = 0.0f,
-        .Kd = 0.0f,
-        .MaxOut = 12000.0f,
-        .DeadBand = 0.0f,
-        .Improve = PID_Integral_Limit | PID_Derivative_On_Measurement |
-                   PID_OutputFilter | PID_DerivativeFilter,
-        .IntegralLimit = 3000.0f,
-        .CoefA = 0.0f,
-        .CoefB = 0.0f,
-        .Output_LPF_RC = 0.0002f,
-        .Derivative_LPF_RC = 0.0002f,
-    },
-    {
-        /* 轮 2：左后 */
-        .Kp = 8.0f,
-        .Ki = 0.0f,
-        .Kd = 0.0f,
-        .MaxOut = 12000.0f,
-        .DeadBand = 0.0f,
-        .Improve = PID_Integral_Limit | PID_Derivative_On_Measurement |
-                   PID_OutputFilter | PID_DerivativeFilter,
-        .IntegralLimit = 3000.0f,
-        .CoefA = 0.0f,
-        .CoefB = 0.0f,
-        .Output_LPF_RC = 0.0002f,
-        .Derivative_LPF_RC = 0.0002f,
-    },
-    {
-        /* 轮 3：右后（含小积分项，便于静差收敛） */
-        .Kp = 14.0f,
-        .Ki = 2.0f,
-        .Kd = 0.0f,
-        .MaxOut = 12000.0f,
-        .DeadBand = 0.0f,
-        .Improve = PID_Integral_Limit | PID_Derivative_On_Measurement |
-                   PID_OutputFilter | PID_DerivativeFilter,
-        .IntegralLimit = 3000.0f,
-        .CoefA = 0.0f,
-        .CoefB = 0.0f,
-        .Output_LPF_RC = 0.0002f,
-        .Derivative_LPF_RC = 0.0002f,
-    },
+static volatile PID_Init_Config_s
+    chassis_speed_pid_configs[CHASSIS_WHEEL_COUNT] = {
+        {
+            /* 轮 0：左前 */
+            .Kp = 12.0f,
+            .Ki = 0.0f,
+            .Kd = 0.0f,
+            .MaxOut = 12000.0f,
+            .DeadBand = 0.0f,
+            .Improve = PID_Integral_Limit | PID_Derivative_On_Measurement |
+                       PID_OutputFilter | PID_DerivativeFilter,
+            .IntegralLimit = 3000.0f,
+            .CoefA = 0.0f,
+            .CoefB = 0.0f,
+            .Output_LPF_RC = 0.0002f,
+            .Derivative_LPF_RC = 0.0002f,
+        },
+        {
+            /* 轮 1：右前 */
+            .Kp = 8.0f,
+            .Ki = 0.0f,
+            .Kd = 0.0f,
+            .MaxOut = 12000.0f,
+            .DeadBand = 0.0f,
+            .Improve = PID_Integral_Limit | PID_Derivative_On_Measurement |
+                       PID_OutputFilter | PID_DerivativeFilter,
+            .IntegralLimit = 3000.0f,
+            .CoefA = 0.0f,
+            .CoefB = 0.0f,
+            .Output_LPF_RC = 0.0002f,
+            .Derivative_LPF_RC = 0.0002f,
+        },
+        {
+            /* 轮 2：左后 */
+            .Kp = 8.0f,
+            .Ki = 0.0f,
+            .Kd = 0.0f,
+            .MaxOut = 12000.0f,
+            .DeadBand = 0.0f,
+            .Improve = PID_Integral_Limit | PID_Derivative_On_Measurement |
+                       PID_OutputFilter | PID_DerivativeFilter,
+            .IntegralLimit = 3000.0f,
+            .CoefA = 0.0f,
+            .CoefB = 0.0f,
+            .Output_LPF_RC = 0.0002f,
+            .Derivative_LPF_RC = 0.0002f,
+        },
+        {
+            /* 轮 3：右后（含小积分项，便于静差收敛） */
+            .Kp = 14.0f,
+            .Ki = 2.0f,
+            .Kd = 0.0f,
+            .MaxOut = 12000.0f,
+            .DeadBand = 0.0f,
+            .Improve = PID_Integral_Limit | PID_Derivative_On_Measurement |
+                       PID_OutputFilter | PID_DerivativeFilter,
+            .IntegralLimit = 3000.0f,
+            .CoefA = 0.0f,
+            .CoefB = 0.0f,
+            .Output_LPF_RC = 0.0002f,
+            .Derivative_LPF_RC = 0.0002f,
+        },
 };
+
+/**
+ * @brief 将 RAM 调参配置应用到指定速度 PID。
+ *
+ * 主动控制路径只更新固定配置字段，保留积分、微分和滤波历史；安全失能或故障
+ * 路径通过 PIDInit 完整复位运行状态。先生成局部快照，避免单个字段在一次应用
+ * 过程中被重复读取。
+ */
+static void chassis_apply_pid_config(uint8_t index, bool reset_runtime_state) {
+  PID_Init_Config_s config = chassis_speed_pid_configs[index];
+  PIDInstance *pid = &chassis_context.speed_pid[index];
+
+  if (reset_runtime_state) {
+    PIDInit(pid, config.Kp, config.Ki, config.Kd, config.MaxOut,
+            config.IntegralLimit, config.DeadBand, config.Improve, config.CoefA,
+            config.CoefB, config.Output_LPF_RC, config.Derivative_LPF_RC);
+    return;
+  }
+}
 
 /**
  * @brief 重新初始化四路静态速度 PID。
@@ -127,9 +151,7 @@ static const PID_Init_Config_s chassis_speed_pid_configs[CHASSIS_WHEEL_COUNT] = 
  */
 static void chassis_reset_pids(void) {
   for (uint8_t index = 0U; index < CHASSIS_WHEEL_COUNT; ++index) {
-    /* 配置表为 const，拷贝一份再交给 PIDInit（库侧可能写入配置副本） */
-    PID_Init_Config_s config = chassis_speed_pid_configs[index];
-    PIDInit(&chassis_context.speed_pid[index], &config);
+    chassis_apply_pid_config(index, true);
   }
 }
 
@@ -402,10 +424,11 @@ err_t chassis_control_step(const chassis_control_input_t *input,
 
   /* 四轮速度环：测量=反馈 RPM，设定=逆解目标 RPM */
   for (uint8_t index = 0U; index < CHASSIS_WHEEL_COUNT; ++index) {
-    const float output = PIDCalculate(
-        &chassis_context.speed_pid[index],
-        (float)chassis_context.status.feedback_rpm[index],
-        chassis_context.status.target_rpm[index]);
+    chassis_apply_pid_config(index, false);
+    const float output =
+        PIDCalculate(&chassis_context.speed_pid[index],
+                     (float)chassis_context.status.feedback_rpm[index],
+                     chassis_context.status.target_rpm[index]);
     if (chassis_context.speed_pid[index].ERRORHandler.ERRORType !=
         PID_ERROR_NONE) {
       return chassis_enter_zero_output(CONTROL_STATE_FAULT, FAILED, now_tick,

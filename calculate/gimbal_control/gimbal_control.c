@@ -11,11 +11,7 @@
 #include <stddef.h>
 #include <string.h>
 
-enum {
-  GIMBAL_YAW_INDEX = 0,
-  GIMBAL_PITCH_INDEX,
-  GIMBAL_AXIS_COUNT
-};
+enum { GIMBAL_YAW_INDEX = 0, GIMBAL_PITCH_INDEX, GIMBAL_AXIS_COUNT };
 
 typedef struct {
   dj_motor_bus_t bus;
@@ -27,52 +23,72 @@ typedef struct {
 } gimbal_control_context_t;
 
 static gimbal_control_context_t gimbal_context = {
-    .status = {
-        .state = CONTROL_STATE_UNINITIALIZED,
-        .last_error = PENDING,
-    },
+    .status =
+        {
+            .state = CONTROL_STATE_UNINITIALIZED,
+            .last_error = PENDING,
+        },
 };
 
-static const PID_Init_Config_s gimbal_speed_pid_configs[GIMBAL_AXIS_COUNT] = {
+static volatile PID_Init_Config_s gimbal_speed_pid_configs[GIMBAL_AXIS_COUNT] =
     {
-        /* 轮 0：yaw */
-        .Kp = 0.0f,
-        .Ki = 0.0f,
-        .Kd = 0.0f,
-        .MaxOut = 12000.0f,
-        .DeadBand = 0.0f,
-        .Improve = PID_Integral_Limit | PID_Derivative_On_Measurement |
-                   PID_OutputFilter | PID_DerivativeFilter,
-        .IntegralLimit = 3000.0f,
-        .CoefA = 0.0f,
-        .CoefB = 0.0f,
-        .Output_LPF_RC = 0.0002f,
-        .Derivative_LPF_RC = 0.0002f,
-    },
-    {
-        /* 轮 1：pitch */
-        .Kp = 8.0f,
-        .Ki = 0.0f,
-        .Kd = 0.0f,
-        .MaxOut = 12000.0f,
-        .DeadBand = 0.0f,
-        .Improve = PID_Integral_Limit | PID_Derivative_On_Measurement |
-                   PID_OutputFilter | PID_DerivativeFilter,
-        .IntegralLimit = 3000.0f,
-        .CoefA = 0.0f,
-        .CoefB = 0.0f,
-        .Output_LPF_RC = 0.0002f,
-        .Derivative_LPF_RC = 0.0002f,
-    },
+        {
+            /* 轮 0：yaw */
+            .Kp = 0.0f,
+            .Ki = 0.0f,
+            .Kd = 0.0f,
+            .MaxOut = 12000.0f,
+            .DeadBand = 0.0f,
+            .Improve = PID_Integral_Limit | PID_Derivative_On_Measurement |
+                       PID_OutputFilter | PID_DerivativeFilter,
+            .IntegralLimit = 3000.0f,
+            .CoefA = 0.0f,
+            .CoefB = 0.0f,
+            .Output_LPF_RC = 0.0002f,
+            .Derivative_LPF_RC = 0.0002f,
+        },
+        {
+            /* 轮 1：pitch */
+            .Kp = 8.0f,
+            .Ki = 0.0f,
+            .Kd = 0.0f,
+            .MaxOut = 12000.0f,
+            .DeadBand = 0.0f,
+            .Improve = PID_Integral_Limit | PID_Derivative_On_Measurement |
+                       PID_OutputFilter | PID_DerivativeFilter,
+            .IntegralLimit = 3000.0f,
+            .CoefA = 0.0f,
+            .CoefB = 0.0f,
+            .Output_LPF_RC = 0.0002f,
+            .Derivative_LPF_RC = 0.0002f,
+        },
 };
 
 /**
- * @brief 重新初始化两路静态速度 PID，清除全部运行状态。
+ * @brief 将 RAM 调参配置应用到指定速度 PID。
+ *
+ * 主动控制路径只更新固定配置字段，保留积分、微分和滤波历史；安全失能或故障
+ * 路径通过 PIDInit 完整复位运行状态。先生成局部快照，避免单个字段在一次应用
+ * 过程中被重复读取。
+ */
+static void gimbal_apply_pid_config(uint8_t index, bool reset_runtime_state) {
+  PID_Init_Config_s config = gimbal_speed_pid_configs[index];
+  PIDInstance *pid = &gimbal_context.speed_pid[index];
+
+  if (reset_runtime_state) {
+    PIDInit(pid, config.Kp, config.Ki, config.Kd, config.MaxOut,
+            config.IntegralLimit, config.DeadBand, config.Improve, config.CoefA,
+            config.CoefB, config.Output_LPF_RC, config.Derivative_LPF_RC);
+    return;
+  }
+}
+
+/**
+ * @brief 重新初始化两路速度 PID，清除全部运行状态。
  */
 static void gimbal_reset_pids(void) {
   for (uint8_t index = 0U; index < GIMBAL_AXIS_COUNT; ++index) {
-    PID_Init_Config_s config = gimbal_speed_pid_config;
-    PIDInit(&gimbal_context.speed_pid[index], &config);
+    gimbal_apply_pid_config(index, true);
   }
 }
 
@@ -186,8 +202,7 @@ static bool gimbal_refresh_feedback(uint32_t now_tick) {
       (yaw_result == OK) ? yaw_feedback.speed_rpm : 0;
   gimbal_context.status.pitch_feedback_rpm =
       (pitch_result == OK) ? pitch_feedback.speed_rpm : 0;
-  return gimbal_context.status.yaw_online &&
-         gimbal_context.status.pitch_online;
+  return gimbal_context.status.yaw_online && gimbal_context.status.pitch_online;
 }
 
 /**
@@ -279,18 +294,17 @@ err_t gimbal_control_step(const gimbal_control_input_t *input,
   }
   gimbal_context.status.source_online = input->source_online;
 
-  if (!isfinite(input->yaw_speed_rpm) ||
-      !isfinite(input->pitch_speed_rpm)) {
+  if (!isfinite(input->yaw_speed_rpm) || !isfinite(input->pitch_speed_rpm)) {
     return gimbal_enter_zero_output(CONTROL_STATE_FAULT, ARG_ERR, now_tick,
                                     true, true);
   }
   if (!input->source_online) {
-    return gimbal_enter_zero_output(CONTROL_STATE_FAULT, NO_RESPONSE,
-                                    now_tick, false, true);
+    return gimbal_enter_zero_output(CONTROL_STATE_FAULT, NO_RESPONSE, now_tick,
+                                    false, true);
   }
   if (!input->enable) {
-    return gimbal_enter_zero_output(CONTROL_STATE_SAFE_DISABLED, OK,
-                                    now_tick, false, true);
+    return gimbal_enter_zero_output(CONTROL_STATE_SAFE_DISABLED, OK, now_tick,
+                                    false, true);
   }
   if (!gimbal_refresh_feedback(now_tick)) {
     return gimbal_enter_zero_output(CONTROL_STATE_FAULT, TIMEOUT, now_tick,
@@ -301,42 +315,39 @@ err_t gimbal_control_step(const gimbal_control_input_t *input,
   gimbal_context.status.pitch_target_rpm = input->pitch_speed_rpm;
 #if GIMBAL_ACTUATION_ENABLED
   if (gimbal_context.status.zero_retry_pending) {
-    return gimbal_enter_zero_output(CONTROL_STATE_SAFE_DISABLED, OK,
-                                    now_tick, true, true);
+    return gimbal_enter_zero_output(CONTROL_STATE_SAFE_DISABLED, OK, now_tick,
+                                    true, true);
   }
 
+  gimbal_apply_pid_config(GIMBAL_YAW_INDEX, false);
+  gimbal_apply_pid_config(GIMBAL_PITCH_INDEX, false);
   const float yaw_output = PIDCalculate(
       &gimbal_context.speed_pid[GIMBAL_YAW_INDEX],
-      (float)gimbal_context.status.yaw_feedback_rpm,
-      input->yaw_speed_rpm);
+      (float)gimbal_context.status.yaw_feedback_rpm, input->yaw_speed_rpm);
   const float pitch_output = PIDCalculate(
       &gimbal_context.speed_pid[GIMBAL_PITCH_INDEX],
-      (float)gimbal_context.status.pitch_feedback_rpm,
-      input->pitch_speed_rpm);
-  if ((gimbal_context.speed_pid[GIMBAL_YAW_INDEX]
-           .ERRORHandler.ERRORType != PID_ERROR_NONE) ||
-      (gimbal_context.speed_pid[GIMBAL_PITCH_INDEX]
-           .ERRORHandler.ERRORType != PID_ERROR_NONE)) {
-    return gimbal_enter_zero_output(CONTROL_STATE_FAULT, FAILED, now_tick,
-                                    true, true);
+      (float)gimbal_context.status.pitch_feedback_rpm, input->pitch_speed_rpm);
+  if ((gimbal_context.speed_pid[GIMBAL_YAW_INDEX].ERRORHandler.ERRORType !=
+       PID_ERROR_NONE) ||
+      (gimbal_context.speed_pid[GIMBAL_PITCH_INDEX].ERRORHandler.ERRORType !=
+       PID_ERROR_NONE)) {
+    return gimbal_enter_zero_output(CONTROL_STATE_FAULT, FAILED, now_tick, true,
+                                    true);
   }
 
   gimbal_context.status.yaw_command = gimbal_output_to_command(yaw_output);
-  gimbal_context.status.pitch_command =
-      gimbal_output_to_command(pitch_output);
+  gimbal_context.status.pitch_command = gimbal_output_to_command(pitch_output);
   gimbal_context.status.state = CONTROL_STATE_ACTIVE;
 
-  err_t result = dj_motor_set_command(
-      &gimbal_context.motors[GIMBAL_YAW_INDEX],
-      gimbal_context.status.yaw_command);
+  err_t result = dj_motor_set_command(&gimbal_context.motors[GIMBAL_YAW_INDEX],
+                                      gimbal_context.status.yaw_command);
   if (result == OK) {
-    result = dj_motor_set_command(
-        &gimbal_context.motors[GIMBAL_PITCH_INDEX],
-        gimbal_context.status.pitch_command);
+    result = dj_motor_set_command(&gimbal_context.motors[GIMBAL_PITCH_INDEX],
+                                  gimbal_context.status.pitch_command);
   }
   if (result != OK) {
-    return gimbal_enter_zero_output(CONTROL_STATE_FAULT, result, now_tick,
-                                    true, true);
+    return gimbal_enter_zero_output(CONTROL_STATE_FAULT, result, now_tick, true,
+                                    true);
   }
 
   gimbal_context.status.last_error = OK;

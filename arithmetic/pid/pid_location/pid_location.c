@@ -15,7 +15,8 @@
 #include <string.h>
 
 //* ================= 位置式 PID 优化环节实现 =================
-//? 以下静态函数只修改 PIDInstance 的中间项，最终输出仍由 PIDCalculate() 统一汇总。
+//? 以下静态函数只修改 PIDInstance 的中间项，最终输出仍由 PIDCalculate()
+// 统一汇总。
 
 static void *zmalloc(size_t size) {
   void *ptr = malloc(size);
@@ -27,13 +28,15 @@ static void *zmalloc(size_t size) {
   return ptr;
 }
 
-//? 梯形积分：用本轮误差和上轮误差的平均值替代矩形积分，降低低采样频率下的积分误差。
+//?
+// 梯形积分：用本轮误差和上轮误差的平均值替代矩形积分，降低低采样频率下的积分误差。
 static void f_Trapezoid_Intergral(PIDInstance *pid) {
   // 计算梯形的面积,(上底+下底)*高/2
   pid->ITerm = pid->Ki * ((pid->Err + pid->Last_Err) / 2) * pid->dt;
 }
 
-//? 变速积分：误差小时保持积分作用，误差变大时线性削弱积分，降低启动或大阶跃时的超调。
+//?
+// 变速积分：误差小时保持积分作用，误差变大时线性削弱积分，降低启动或大阶跃时的超调。
 static void f_Changing_Integration_Rate(PIDInstance *pid) {
   if (pid->Err * pid->Iout > 0) {
     // 积分呈累积趋势
@@ -95,7 +98,8 @@ static void f_Output_Limit(PIDInstance *pid) {
 }
 
 //? 电机堵转检测：输出接近最大且反馈长期跟不上 Ref 时累计 ERRORCount。
-//! 该逻辑会在堵转后反向 Ref，开启 PID_ErrorHandle 前需要确认执行器允许反向解堵。
+//! 该逻辑会在堵转后反向 Ref，开启 PID_ErrorHandle
+//! 前需要确认执行器允许反向解堵。
 static void f_PID_ErrorHandle(PIDInstance *pid) {
   /*Motor Blocked Handle*/
   if (fabsf(pid->Output) < pid->MaxOut * 0.001f || fabsf(pid->Ref) < 0.0001f)
@@ -115,51 +119,48 @@ static void f_PID_ErrorHandle(PIDInstance *pid) {
   }
 }
 
-//* ================= 位置式 PID 外部算法接口 =================
+//* ================= 位置式 PID 外部算法接口 =================*//
 
-/**
- * @brief 初始化PID,设置参数和启用的优化环节,将其他数据置零
- *
- * @param pid    PID实例
- * @param config PID初始化设置
- */
-void PIDInit(PIDInstance *pid, PID_Init_Config_s *config) {
-  if ((pid == NULL) || (config == NULL)) {
+//@brief 使用显式参数初始化 PID，设置参数并将运行状态置零
+
+void PIDInit(PIDInstance *pid, float kp, float ki, float kd, float max_output,
+             float max_integral, float deadzone,
+             PID_Improvement_e improve_flags, float coef_a, float coef_b,
+             float output_lpf_rc, float derivative_lpf_rc) {
+  if (pid == NULL) {
     return;
   }
-  //? config 的字段与 PIDInstance 起始配置区连续一致，因此旧实现通过 memcpy 快速复制。
-  //! 若调整 PIDInstance 前部字段顺序，必须同步检查这里的 memcpy 范围。
+
   memset(pid, 0, sizeof(PIDInstance));
-  memcpy(pid, config, sizeof(PID_Init_Config_s));
+  pid->Kp = kp;
+  pid->Ki = ki;
+  pid->Kd = kd;
+  pid->MaxOut = max_output;
+  pid->IntegralLimit = max_integral;
+  pid->DeadBand = deadzone;
+  pid->Improve = improve_flags;
+  pid->CoefA = coef_a;
+  pid->CoefB = coef_b;
+  pid->Output_LPF_RC = output_lpf_rc;
+  pid->Derivative_LPF_RC = derivative_lpf_rc;
   DWT_GetDeltaT(&pid->DWT_CNT);
 }
 /**
- * @brief 初始化PID,设置参数和启用的优化环节,将其他数据置零
- * @param config PID初始化设置
+ * @brief 使用显式参数注册并初始化 PID 实例
  * @return PIDInstance* PID实例指针
  */
-PIDInstance *PIDRegister(PID_Init_Config_s *config) {
+PIDInstance *PIDRegister(float kp, float ki, float kd, float max_output,
+                         float max_integral, float deadzone,
+                         PID_Improvement_e improve_flags, float coef_a,
+                         float coef_b, float output_lpf_rc,
+                         float derivative_lpf_rc) {
   PIDInstance *pid = NULL;
-  if (config == NULL) {
-    return NULL;
-  }
   pid = (PIDInstance *)zmalloc(sizeof(PIDInstance));
   if (pid == NULL) {
     return NULL;
   }
-  pid->Kp = config->Kp;
-  pid->Ki = config->Ki;
-  pid->Kd = config->Kd;
-  pid->MaxOut = config->MaxOut;
-  pid->DeadBand = config->DeadBand;
-
-  pid->Improve = config->Improve;
-  pid->IntegralLimit = config->IntegralLimit;
-  pid->CoefA = config->CoefA;
-  pid->CoefB = config->CoefB;
-  pid->Output_LPF_RC = config->Output_LPF_RC;
-  pid->Derivative_LPF_RC = config->Derivative_LPF_RC;
-  DWT_GetDeltaT(&pid->DWT_CNT);
+  PIDInit(pid, kp, ki, kd, max_output, max_integral, deadzone, improve_flags,
+          coef_a, coef_b, output_lpf_rc, derivative_lpf_rc);
   return pid;
 }
 /**
@@ -186,7 +187,8 @@ float PIDCalculate(PIDInstance *pid, float measure, float ref) {
   if (pid->ERRORHandler.ERRORType == PID_MOTOR_BLOCKED_ERROR) // 堵转
     pid->Ref = -ref;
 
-  //? 死区内跳过完整 PID 并清零输出，避免小误差附近反复抖动；死区外才执行完整链路。
+  //? 死区内跳过完整 PID
+  // 并清零输出，避免小误差附近反复抖动；死区外才执行完整链路。
   if (abs(pid->Err) > pid->DeadBand) {
     //? 位置式基础项：P 使用当前误差，I 使用误差对时间积分，D 使用误差差分。
     pid->Pout = pid->Kp * pid->Err;
@@ -216,7 +218,8 @@ float PIDCalculate(PIDInstance *pid, float measure, float ref) {
     f_Output_Limit(pid);
   } else // 进入死区, 则清空积分和输出
   {
-    //! 进入死区会清空 ITerm 和 Output，适合定位控制；若需保持力矩，需另行设计保持项。
+    //! 进入死区会清空 ITerm 和
+    //! Output，适合定位控制；若需保持力矩，需另行设计保持项。
     pid->Output = 0;
     pid->ITerm = 0;
   }
