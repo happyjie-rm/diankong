@@ -29,6 +29,9 @@
 #define CHASSIS_ACTUATION_ENABLED (0)
 #endif
 
+// 定义底盘的比赛标志位或者是调试标志位 0为调试状态 1为比赛状态
+#define CHASSIS_GAME_FLAG (0)
+
 /** 任一电机反馈超时阈值（ms）；超时则整盘进入故障零输出。 */
 #define CHASSIS_FEEDBACK_TIMEOUT_MS (20U)
 /** 安全零帧心跳间隔（ms）；防止 C620 因长时间无帧而异常。 */

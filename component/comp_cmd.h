@@ -100,3 +100,12 @@ typedef struct {
   uint16_t key;
   uint16_t res;
 } cmd_rc_t;
+
+// ==================== 下行命令分发类型 ====================
+
+//! 设备命令入口表项：写函数 / 读函数对，由各设备任务注册。
+typedef struct {
+  const char *cmd;                         //!< 指令名，如 "id"、"speed"
+  err_t (*write)(uint8_t id, float value); //!< 写：id=设备号，value=目标值
+  err_t (*read)(uint8_t id, float *out);   //!< 读：id=设备号，out=输出值
+} device_cmd_entry_t;

@@ -3,28 +3,37 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "FreeRTOS.h"
+#include "comp_cmd.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
+ * @brief 舵机命令消息，经 FreeRTOS 队列从 vofa_task 发往 lx824_task。
+ */
+typedef struct {
+  uint8_t id;                //!< 舵机编号
+  char op;                   //!< 'w' 写 / 'r' 读
+  char cmd[16];              //!< 指令名，如 "id"、"angle"
+  float value;               //!< 写操作目标值 / 读操作占位
+} servo_cmd_msg_t;
+
+/**
  * @brief FreeRTOS 中 LX824 舵机任务入口。
- *
- * CubeMX 在 Core/Src/freertos.c 中生成了同名弱函数 lx824_task；本函数提供强定义，
- * 由系统创建的 lx824_task 线程调用，周期性读取总线上舵机的 ID。
  */
 void lx824_task(void *argument);
 
 /**
- * @brief 读取最近一次成功获取到的舵机 ID。
+ * @brief 向 lx824_task 发送舵机命令（vofa_task 调用）。
  *
- * 任务循环通过 LX824 协议的读 ID 指令（Cmd 14）轮询舵机，成功后缓存结果。
- * 该函数供其他任务/业务代码按需读取，是 LX824_IdRead() 的 C 包装接口。
+ * 将命令参数拷贝到队列消息中，经 FreeRTOS 队列发送给 lx824_task，
+ * lx824_task 在自己的任务上下文中执行 LX824 协议收发。
  *
- * @param servo_id 输出参数地址，不能为 NULL。
- * @return true 表示已经至少成功读到过一次舵机 ID；false 表示参数为空或尚未读到。
+ * @return err_t OK 表示入队成功
  */
-// bool LX824Task_GetServoId(uint8_t *servo_id);
+err_t LX824Task_SendCommand(uint8_t id, char op, const char *cmd, float value);
 
 #ifdef __cplusplus
 }

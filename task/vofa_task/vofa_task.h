@@ -2,6 +2,8 @@
 
 #include <stdbool.h>
 
+#include "vofa.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -13,6 +15,13 @@ extern "C" {
  * 由系统创建的 vofa 线程调用，用于启动 USART3 上的 VOFA 收发逻辑。
  */
 void vofa_task(void *argument);
+
+/**
+ * @brief 获取 VOFA 实例指针，供其他任务调用 Vofa_SendFireWater。
+ *
+ * @return Vofa_t 实例指针，VOFA 尚未初始化完成时返回 NULL。
+ */
+Vofa_t *VofaTask_GetInstance(void);
 
 /**
  * @brief 读取 VOFA 接收到的 speed 参数。

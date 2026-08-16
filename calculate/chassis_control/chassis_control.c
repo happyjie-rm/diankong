@@ -376,6 +376,21 @@ err_t chassis_control_init(STM32CAN_t *can) {
  */
 err_t chassis_control_step(const chassis_control_input_t *input,
                            uint32_t now_tick) {
+  // 当用于比赛调试时需要的检验
+  if (CHASSIS_GAME_FLAG)
+  {
+     /* 任一电机反馈超时则整盘停转 */
+    if (!chassis_refresh_feedback(now_tick)) {
+      return chassis_enter_zero_output(CONTROL_STATE_FAULT, TIMEOUT, now_tick,
+                                      false, true);
+    }
+  }
+  else
+  {
+    /* 非比赛调试时，仍然刷新反馈，但不强制停转 */
+    (void)chassis_refresh_feedback(now_tick);
+  }
+
   if (!chassis_context.status.initialized) {
     return STATE_ERR;
   }
@@ -402,11 +417,6 @@ err_t chassis_control_step(const chassis_control_input_t *input,
   /* 使能关闭（任务层：左拨杆 sw_l 为 UP/非法 等）：安全失能 */
   if (!input->enable) {
     return chassis_enter_zero_output(CONTROL_STATE_SAFE_DISABLED, OK, now_tick,
-                                     false, true);
-  }
-  /* 任一电机反馈超时则整盘停转 */
-  if (!chassis_refresh_feedback(now_tick)) {
-    return chassis_enter_zero_output(CONTROL_STATE_FAULT, TIMEOUT, now_tick,
                                      false, true);
   }
 

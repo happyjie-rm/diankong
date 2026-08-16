@@ -18,6 +18,8 @@
 | `BSP_UART_RawData_t`             | 原始缓冲描述     | [bsp_uart.h:48](./bsp_uart.h#L48) |
 | `STM32UART_t`                    | 环形 RX 控制块   | [bsp_uart.h:56](./bsp_uart.h#L56) |
 | `STM32UARTDoubleBufTx_t`         | 双缓冲 TX 控制块 | [bsp_uart.h:69](./bsp_uart.h#L69) |
+| `STM32UARTDoubleBufHwTx_t`       | 硬件双缓冲 TX 控制块（DBM） | [bsp_uart.h:82](./bsp_uart.h#L82) |
+| `STM32UARTDoubleBufHwRx_t`       | 硬件双缓冲 RX 控制块（DBM） | [bsp_uart.h:97](./bsp_uart.h#L97) |
 
 ## 常用用法
 
@@ -82,6 +84,45 @@ void app_uart1_tx_init(void)
 - 单次写入长度不能超过单块缓冲容量。
 - 连续写太快时，pending 数据会被后一次写入覆盖。
 
+### 4. 硬件双缓冲接收（DBM 模式）
+
+RX DBM 利用 DMA 硬件双缓冲特性，DMA 在两块缓冲之间自动切换接收。TC 中断表示缓冲 0 写满，HT 中断表示缓冲 1 写满。上层在回调中直接处理已满缓冲，无需软件拷贝。
+
+```c
+static uint8_t uart1_rx_buf0[128];
+static uint8_t uart1_rx_buf1[128];
+static STM32UARTDoubleBufHwRx_t uart1_rx_dbm;
+
+static void uart1_rx_buf0_ready(uint8_t *data, size_t size)
+{
+    // 缓冲 0 已写满，处理数据（size 固定为单块缓冲大小）
+}
+
+static void uart1_rx_buf1_ready(uint8_t *data, size_t size)
+{
+    // 缓冲 1 已写满，处理数据
+}
+
+void app_uart1_rx_dbm_init(void)
+{
+    BSP_UART_RawData_t rx0 = {uart1_rx_buf0, sizeof(uart1_rx_buf0)};
+    BSP_UART_RawData_t rx1 = {uart1_rx_buf1, sizeof(uart1_rx_buf1)};
+
+    STM32UARTDoubleBufHwRx_Init(&uart1_rx_dbm, &huart1,
+                                rx0, rx1,
+                                uart1_rx_buf0_ready,   // tc_callback = 缓冲 0 满
+                                uart1_rx_buf1_ready);  // ht_callback = 缓冲 1 满
+    STM32UARTDoubleBufHwRx_SetRxDBM(&uart1_rx_dbm);
+}
+```
+
+注意点：
+
+- 两块 RX 缓冲大小必须相同。
+- 回调运行在中断上下文中，不应执行长时间阻塞操作。
+- 回调的 size 参数固定等于单块缓冲大小。
+- RX DBM 和单缓冲 RX（STM32UART_t）不能同时用于同一个串口。
+
 ## 接口速查
 
 ### 反查与基础处理
@@ -112,15 +153,37 @@ void app_uart1_tx_init(void)
 | `STM32UARTDoubleBufTx_GetLastError`          | 读取双缓冲 TX 最近错误码 | [实现](./bsp_uart.c#L576) / [声明](./bsp_uart.h#L147) |
 | `STM32UARTDoubleBufTx_HandleTxComplete`      | 处理 TX DMA 完成事件     | [实现](./bsp_uart.c#L588) / [声明](./bsp_uart.h#L151) |
 
+### 硬件双缓冲 TX（DBM 模式）
+
+| 函数                                      | 作用                     | 跳转                                                  |
+| ----------------------------------------- | ------------------------ | ----------------------------------------------------- |
+| `STM32UARTDoubleBufHwTx_Init`             | 绑定 DBM TX 控制块       | [实现](./bsp_uart.c#L604) / [声明](./bsp_uart.h#L157) |
+| `STM32UARTDoubleBufHwTx_SetTxDBM`         | 配置 TX DMA 为 DBM 模式  | [实现](./bsp_uart.c#L680) / [声明](./bsp_uart.h#L165) |
+| `STM32UARTDoubleBufHwTx_Write`            | 写入数据到空闲缓冲       | [实现](./bsp_uart.c#L770) / [声明](./bsp_uart.h#L171) |
+| `STM32UARTDoubleBufHwTx_GetLastError`     | 读取最近错误码           | [实现](./bsp_uart.c#L848) / [声明](./bsp_uart.h#L177) |
+| `STM32UARTDoubleBufHwTx_HandleTC`         | 处理 TC 中断             | [实现](./bsp_uart.c#L860) / [声明](./bsp_uart.h#L180) |
+| `STM32UARTDoubleBufHwTx_HandleHT`         | 处理 HT 中断             | [实现](./bsp_uart.c#L882) / [声明](./bsp_uart.h#L184) |
+
+### 硬件双缓冲 RX（DBM 模式）
+
+| 函数                                      | 作用                     | 跳转                                                  |
+| ----------------------------------------- | ------------------------ | ----------------------------------------------------- |
+| `STM32UARTDoubleBufHwRx_Init`             | 绑定 DBM RX 控制块       | [实现](./bsp_uart.c#L918) / [声明](./bsp_uart.h#L189) |
+| `STM32UARTDoubleBufHwRx_SetRxDBM`         | 配置 RX DMA 为 DBM 模式  | [实现](./bsp_uart.c#L1000) / [声明](./bsp_uart.h#L197) |
+| `STM32UARTDoubleBufHwRx_GetLastError`     | 读取最近错误码           | [实现](./bsp_uart.c#L1108) / [声明](./bsp_uart.h#L201) |
+| `STM32UARTDoubleBufHwRx_HandleTC`         | 处理 TC 中断（缓冲 0 满）| [实现](./bsp_uart.c#L1120) / [声明](./bsp_uart.h#L204) |
+| `STM32UARTDoubleBufHwRx_HandleHT`         | 处理 HT 中断（缓冲 1 满）| [实现](./bsp_uart.c#L1140) / [声明](./bsp_uart.h#L208) |
+
 ### HAL 回调入口
 
 | 函数                         | 作用                | 跳转                      |
 | ---------------------------- | ------------------- | ------------------------- |
 | `HAL_UARTEx_RxEventCallback` | RX 空闲事件分发入口 | [实现](./bsp_uart.c#L613) |
-| `HAL_UART_TxCpltCallback`    | TX DMA 完成分发入口 | [实现](./bsp_uart.c#L636) |
+| `HAL_UART_TxCpltCallback`    | TX/RX DMA 完成分发  | [实现](./bsp_uart.c#L636) |
+| `HAL_UART_TxHalfCpltCallback`| TX/RX DMA 半完成分发| [实现](./bsp_uart.c#L665) |
 
 ## 一句话记忆
 
-- RX 看 `ReceiveToIdle + 循环 DMA`。
-- TX 看 `双缓冲 + DMA_NORMAL`。
+- RX 看 `ReceiveToIdle + 循环 DMA` 或 `DBM 硬件双缓冲`。
+- TX 看 `双缓冲 + DMA_NORMAL` 或 `DBM 硬件双缓冲`。
 - 真正给上层的，是切好的数据片段和发送完成回调。

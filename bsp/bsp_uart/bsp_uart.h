@@ -63,7 +63,7 @@ typedef struct
   err_t last_error_;                    //! 最近一次 BSP 操作结果
 } STM32UART_t;
 
-//! 双缓冲 DMA TX 控制块。
+//! 双缓冲 DMA TX 控制块（软件双缓冲）。
 //! active_buf_ 表示当前 DMA 正在发送的缓冲，pending_size_ 表示另一块缓冲中待发送字节数。
 //! 两块 TX 缓冲大小必须相同，单次写入长度不能超过单块缓冲容量。
 typedef struct
@@ -80,6 +80,38 @@ typedef struct
   volatile bool tx_busy_;                        //! HAL DMA 是否正在发送
 } STM32UARTDoubleBufTx_t;
 
+//! 硬件双缓冲 DMA TX 控制块（DMA DBM 模式）。
+//! 利用 DMA 硬件双缓冲特性（DBM），DMA 在 M0AR 和 M1AR 之间自动切换。
+//! TC 中断 = 一块缓冲发完，HT 中断 = 切到另一块缓冲。
+//! 调用方只需通过 Write 填充当前空闲缓冲，无需管理发送状态机。
+typedef struct
+{
+  BSP_UART_t id_;                                //! BSP 逻辑串口编号
+  BSP_UART_RawData_t dma_buff_0_;                //! TX DMA 缓冲 0（M0AR）
+  BSP_UART_RawData_t dma_buff_1_;                //! TX DMA 缓冲 1（M1AR）
+  UART_HandleTypeDef *uart_handle_;              //! CubeMX 生成的 HAL UART 句柄
+  STM32UART_TxCompleteCallback_t tc_callback_;   //! 整帧发送完成回调（两块都发完）
+  STM32UART_TxCompleteCallback_t ht_callback_;   //! 半帧完成回调（一块发完，可选）
+  err_t last_error_;                             //! 最近一次 BSP 操作结果
+  volatile uint8_t write_buf_;                   //! 当前可写入的缓冲编号（0 或 1）
+  volatile size_t buf_size_;                     //! 单块缓冲大小
+} STM32UARTDoubleBufHwTx_t;
+//! 硬件双缓冲 DMA RX 控制块（DBM 模式）。
+//! 利用 DMA 硬件双缓冲特性（DBM），DMA 在 M0AR 和 M1AR 之间自动切换接收。
+//! TC 中断 = 缓冲 0 已写满，HT 中断 = 缓冲 1 已写满。
+//! 上层在回调中处理已满缓冲，DMA 同时写入另一块，无需软件拷贝。
+typedef struct
+{
+  BSP_UART_t id_;                                //! BSP 逻辑串口编号
+  BSP_UART_RawData_t dma_buff_0_;                //! RX DMA 缓冲 0（M0AR）
+  BSP_UART_RawData_t dma_buff_1_;                //! RX DMA 缓冲 1（M1AR）
+  UART_HandleTypeDef *uart_handle_;              //! CubeMX 生成的 HAL UART 句柄
+  STM32UART_RxCallback_t tc_callback_;           //! 缓冲 0 写满回调
+  STM32UART_RxCallback_t ht_callback_;           //! 缓冲 1 写满回调
+  err_t last_error_;                             //! 最近一次 BSP 操作结果
+  volatile uint8_t ready_buf_;                   //! 当前可读取的已满缓冲编号（0 或 1）
+  volatile size_t buf_size_;                     //! 单块缓冲大小
+} STM32UARTDoubleBufHwRx_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -149,6 +181,66 @@ err_t STM32UARTDoubleBufTx_GetLastError(const STM32UARTDoubleBufTx_t *self);
 //! 处理 TX DMA 完成事件。
 //! HAL_UART_TxCpltCallback() 调用该函数，切换 active buffer 并尝试续发 pending 数据。
 void STM32UARTDoubleBufTx_HandleTxComplete(STM32UARTDoubleBufTx_t *self);
+
+// ==================== 硬件双缓冲 DMA TX（DBM 模式） ====================
+//! 初始化硬件双缓冲 DMA TX 控制块。
+//! 绑定句柄、两块 DMA 缓冲和回调；不配置 DMA 寄存器。
+err_t STM32UARTDoubleBufHwTx_Init(STM32UARTDoubleBufHwTx_t *self,
+                                  UART_HandleTypeDef *uart_handle,
+                                  BSP_UART_RawData_t dma_buff_0,
+                                  BSP_UART_RawData_t dma_buff_1,
+                                  STM32UART_TxCompleteCallback_t tc_callback,
+                                  STM32UART_TxCompleteCallback_t ht_callback);
+
+//! 配置 TX DMA 为硬件双缓冲模式（DBM）。
+//! 设置 DMA 为 Circular + DBM，配置 M0AR/M1AR，使能 TC/HT 中断。
+//! 调用前必须已调用 Init 绑定缓冲。
+err_t STM32UARTDoubleBufHwTx_SetTxDBM(STM32UARTDoubleBufHwTx_t *self);
+
+//! 写入一帧数据到当前空闲缓冲。
+//! 内部自动选择 write_buf_ 指向的空闲缓冲，写入后递增 write_buf_ 切换。
+//! 如果 DMA 尚未启动，自动调用 HAL_UART_Transmit_DMA() 触发首次发送。
+//! 如果 DMA 已在运行，数据已写入缓冲，DMA 硬件会自动切过来读取。
+err_t STM32UARTDoubleBufHwTx_Write(STM32UARTDoubleBufHwTx_t *self,
+                                   const uint8_t *data,
+                                   size_t size);
+
+//! 获取硬件双缓冲 TX 最近一次错误码。
+err_t STM32UARTDoubleBufHwTx_GetLastError(const STM32UARTDoubleBufHwTx_t *self);
+
+//! 处理硬件双缓冲 TC 中断（整块发完）。
+//! 切换 write_buf_ 并调用 tc_callback_。
+void STM32UARTDoubleBufHwTx_HandleTC(STM32UARTDoubleBufHwTx_t *self);
+
+//! 处理硬件双缓冲 HT 中断（半块发完，即切到另一块）。
+//! 切换 write_buf_ 并调用 ht_callback_。
+void STM32UARTDoubleBufHwTx_HandleHT(STM32UARTDoubleBufHwTx_t *self);
+
+// ==================== 硬件双缓冲 DMA RX（DBM 模式） ====================
+//! 初始化硬件双缓冲 DMA RX 控制块。
+//! 绑定句柄、两块 DMA 缓冲和回调；不配置 DMA 寄存器。
+err_t STM32UARTDoubleBufHwRx_Init(STM32UARTDoubleBufHwRx_t *self,
+                                  UART_HandleTypeDef *uart_handle,
+                                  BSP_UART_RawData_t dma_buff_0,
+                                  BSP_UART_RawData_t dma_buff_1,
+                                  STM32UART_RxCallback_t tc_callback,
+                                  STM32UART_RxCallback_t ht_callback);
+
+//! 配置 RX DMA 为硬件双缓冲模式（DBM）。
+//! 设置 DMA 为 Circular + DBM，配置 M0AR/M1AR，使能 TC/HT 中断。
+//! 调用前必须已调用 Init 绑定缓冲。
+err_t STM32UARTDoubleBufHwRx_SetRxDBM(STM32UARTDoubleBufHwRx_t *self);
+
+//! 获取硬件双缓冲 RX 最近一次错误码。
+err_t STM32UARTDoubleBufHwRx_GetLastError(const STM32UARTDoubleBufHwRx_t *self);
+
+//! 处理硬件双缓冲 RX TC 中断（缓冲 0 写满）。
+//! 标记 ready_buf_ = 0 并调用 tc_callback_ 通知上层处理缓冲 0 的数据。
+void STM32UARTDoubleBufHwRx_HandleTC(STM32UARTDoubleBufHwRx_t *self);
+
+//! 处理硬件双缓冲 RX HT 中断（缓冲 1 写满）。
+//! 标记 ready_buf_ = 1 并调用 ht_callback_ 通知上层处理缓冲 1 的数据。
+void STM32UARTDoubleBufHwRx_HandleHT(STM32UARTDoubleBufHwRx_t *self);
 
 #ifdef __cplusplus
 }

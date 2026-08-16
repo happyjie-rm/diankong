@@ -31,15 +31,15 @@ void chassis_task(void *argument)
     cmd_rc_t command = {0};
     bool remote_online = false;
 
-    if (dr16 != NULL)
-    {
-      const err_t snapshot_result =
-          DR16_GetSnapshot(dr16, &command, &remote_online);
-      if (snapshot_result != OK)
-      {
-        remote_online = false;
-      }
-    }
+    // if (dr16 != NULL)
+    // {
+    //   const err_t snapshot_result =
+    //       DR16_GetSnapshot(dr16, &command, &remote_online);
+    //   if (snapshot_result != OK)
+    //   {
+    //       remote_online = false;
+    //   }
+    // }
 
     /* 默认安全：仅 MID/DOWN 使能；yaw 仅在对应档位覆盖 */
     bool enable = false;
