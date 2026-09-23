@@ -27,8 +27,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "bsp_can.h"
 #include "bsp_dwt.h"
+#include "can_device.h"
 
 /* USER CODE END Includes */
 
@@ -50,16 +50,13 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-/* CAN2 实例（用于底盘电机通信） */
-STM32CAN_t can2_instance;
-/* CAN1 实例（用于云台电机通信） */
-STM32CAN_t can1_instance;
-err_t result[2] = {};
+/* CAN 控制块、IMU 对象与总线初始化均封装在 app/can_device 中。 */
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 void MX_FREERTOS_Init(void);
+
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -109,41 +106,8 @@ int main(void) {
   MX_USART6_UART_Init();
   MX_TIM10_Init();
   /* USER CODE BEGIN 2 */
-  /* 初始化 CAN2 BSP 对象 */
-  result[0] = STM32CAN_Init(&can2_instance, &hcan2);
-  if (result[0] != OK) {
-    Error_Handler();
-  }
-  result[1] = STM32CAN_Init(&can1_instance, &hcan1);
-  if (result[1] != OK) {
-    Error_Handler();
-  }
-  /* 配置 CAN1 过滤器（接收所有帧） */
-  CAN_FilterTypeDef filter_1 = {
-      .FilterMode = CAN_FILTERMODE_IDMASK,
-      .FilterScale = CAN_FILTERSCALE_32BIT,
-      .FilterIdHigh = 0x0000,
-      .FilterIdLow = 0x0000,
-      .FilterMaskIdHigh = 0x0000,
-      .FilterMaskIdLow = 0x0000,
-      .FilterFIFOAssignment = CAN_RX_FIFO1,
-      .FilterActivation = ENABLE,
-      .FilterBank = 0 // CAN1 使用 Filter Bank 0-13
-  };
-  /* 配置 CAN2 过滤器（接收所有帧） */
-  CAN_FilterTypeDef filter_2 = {
-      .FilterMode = CAN_FILTERMODE_IDMASK,
-      .FilterScale = CAN_FILTERSCALE_32BIT,
-      .FilterIdHigh = 0x0000,
-      .FilterIdLow = 0x0000,
-      .FilterMaskIdHigh = 0x0000,
-      .FilterMaskIdLow = 0x0000,
-      .FilterFIFOAssignment = CAN_RX_FIFO0,
-      .FilterActivation = ENABLE,
-      .FilterBank = 14 // CAN2 使用 Filter Bank 14-27
-  };
-  STM32CAN_ConfigFilter(&can1_instance, &filter_1);
-  STM32CAN_ConfigFilter(&can2_instance, &filter_2);
+  /* CAN 对象绑定、过滤器配置、设备注册与总线启动集中在 can_device。 */
+  can_device_Init();
   DWT_Init(168);
   /* USER CODE END 2 */
 

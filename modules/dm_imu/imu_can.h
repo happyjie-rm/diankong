@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+
 #include "FreeRTOS.h"
 #include "bsp_can.h"
 #include "can.h"
@@ -23,23 +24,43 @@
 #define QUATERNION_MAX (1.0f)
 #define CMD_READ (0u)
 #define CMD_WRITE (1u)
-#define IMU_CAN_DEFAULT_ID (0x10u)
-#define IMU_CAN_DEFAULT_MST_ID (0x20u)
-#define IMUCAN_OFFLINE_TIMEOUT_MS (20u)
-/* Names used by the original driver. */
-#define imu__can_id IMU_CAN_DEFAULT_ID
-#define imu__mst_id IMU_CAN_DEFAULT_MST_ID
-#define Quaternion_MIN QUATERNION_MIN
-#define Quaternion_MAX QUATERNION_MAX
 
 typedef enum { COM_USB = 0, COM_RS485, COM_CAN, COM_VOFA } imu_com_port_e;
-typedef enum { CAN_BAUD_1M = 0, CAN_BAUD_500K, CAN_BAUD_400K, CAN_BAUD_250K, CAN_BAUD_200K, CAN_BAUD_100K, CAN_BAUD_50K, CAN_BAUD_25K } imu_baudrate_e;
-typedef enum { REBOOT_IMU = 0, ACCEL_DATA, GYRO_DATA, EULER_DATA, QUAT_DATA, SET_ZERO, ACCEL_CALI, GYRO_CALI, MAG_CALI, CHANGE_COM, SET_DELAY, CHANGE_ACTIVE, SET_BAUD, SET_CAN_ID, SET_MST_ID, DATA_OUTPUT_SELECTION, SAVE_PARAM = 254, RESTORE_SETTING = 255 } reg_id_e;
+typedef enum {
+  CAN_BAUD_1M = 0,
+  CAN_BAUD_500K,
+  CAN_BAUD_400K,
+  CAN_BAUD_250K,
+  CAN_BAUD_200K,
+  CAN_BAUD_100K,
+  CAN_BAUD_50K,
+  CAN_BAUD_25K
+} imu_baudrate_e;
+typedef enum {
+  REBOOT_IMU = 0,
+  ACCEL_DATA,
+  GYRO_DATA,
+  EULER_DATA,
+  QUAT_DATA,
+  SET_ZERO,
+  ACCEL_CALI,
+  GYRO_CALI,
+  MAG_CALI,
+  CHANGE_COM,
+  SET_DELAY,
+  CHANGE_ACTIVE,
+  SET_BAUD,
+  SET_CAN_ID,
+  SET_MST_ID,
+  DATA_OUTPUT_SELECTION,
+  SAVE_PARAM = 254,
+  RESTORE_SETTING = 255
+} reg_id_e;
 
 typedef struct {
   uint8_t can_id;
   uint8_t mst_id;
-  CAN_HandleTypeDef *can_handle;
+  CAN_HandleTypeDef* can_handle;
   float pitch, roll, yaw;
   float gyro[3], accel[3], q[4];
   float cur_temp;
@@ -47,7 +68,7 @@ typedef struct {
 
 typedef struct {
   TaskHandle_t thread_alert;
-  STM32CAN_t *can_;
+  STM32CAN_t* can_;
   uint8_t can_id, mst_id;
   imu_t data;
   bool online_;
@@ -56,10 +77,10 @@ typedef struct {
 } IMUCAN_t;
 
 extern imu_t imu;
-err_t imu_can_init(IMUCAN_t *self, STM32CAN_t *can, uint8_t can_id, uint8_t mst_id);
-err_t imu_can_start(IMUCAN_t *self);
-void imu_can_update(IMUCAN_t *self, uint32_t timeout_ms);
-void imu_init(uint8_t can_id, uint8_t mst_id, CAN_HandleTypeDef *can_handle);
+err_t imu_can_init(IMUCAN_t* self, STM32CAN_t* can, uint8_t can_id,
+                   uint8_t mst_id);
+void imu_can_update(IMUCAN_t* self, uint32_t timeout_ms);
+void imu_init(uint8_t can_id, uint8_t mst_id, CAN_HandleTypeDef* can_handle);
 void imu_write_reg(uint8_t reg_id, uint32_t data);
 void imu_read_reg(uint8_t reg_id);
 void imu_reboot(void);
@@ -78,6 +99,6 @@ void imu_request_accel(void);
 void imu_request_gyro(void);
 void imu_request_euler(void);
 void imu_request_quat(void);
-void IMU_UpdateData(uint8_t *data);
+void IMU_UpdateData(uint8_t* data);
 
 #endif

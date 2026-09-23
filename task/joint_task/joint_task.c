@@ -12,8 +12,7 @@ extern float pos[num];
 void joint_task(void* argument) {
   RM_UNUSED(argument);
 
-  // 先初始化 DM 电机对象，补齐关节控制依赖的 ID、模式与力矩范围
-  dm_motor_init();
+  // DM 电机对象及 CAN1 RX 回调已由 main.c 统一注册。
 
   // save_pos_zero(&hcan1, motor[Motor1].id, PSI_MODE);
   // save_pos_zero(&hcan1, motor[Motor2].id, PSI_MODE);

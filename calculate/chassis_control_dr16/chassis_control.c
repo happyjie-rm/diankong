@@ -258,7 +258,7 @@ void Chassis_Mode(void) {
      *   wz = 固定 3000
      * 底盘仍然持续原地旋转。
      */
-    chassis_small_gyro_control();
+    chassis_stop();
   } else {
     /* UP 或异常状态：安全停止 */
     chassis_stop();
